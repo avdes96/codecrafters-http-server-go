@@ -51,11 +51,14 @@ func parseRequestLine(s string) (*RequestLine, error) {
 	}, nil
 }
 
-func getStatusCode(target string) string {
+func getResponse(target string) []byte {
 	if target == "/" {
-		return "200 OK"
+		return get200Response("")
 	}
-	return "404 Not Found"
+	if strings.HasPrefix(target, "/echo/") {
+		return get200Response(strings.TrimPrefix(target, "/echo/"))
+	}
+	return get404Response()
 }
 
 func parseRequest(s *bufio.Scanner) (*Request, error) {
@@ -69,6 +72,21 @@ func parseRequest(s *bufio.Scanner) (*Request, error) {
 		return nil, err
 	}
 	return &Request{requestLine: rl}, nil
+}
+
+func getTemplate() string {
+	return "HTTP/1.1 %d %s\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"Content-Length: %d\r\n\r\n%s"
+}
+
+func get200Response(body string) []byte {
+	return []byte(fmt.Sprintf(getTemplate(), 200, "OK", len(body), body))
+}
+
+func get404Response() []byte {
+	const msg = "Not Found"
+	return []byte(fmt.Sprintf(getTemplate(), 404, msg, len(msg), msg))
 }
 
 func main() {
@@ -91,11 +109,10 @@ func main() {
 		fmt.Println("Error getting request: ", err.Error())
 		os.Exit(1)
 	}
-	code := getStatusCode(request.requestLine.target)
-	fmt.Println(code)
+	resp := getResponse(request.requestLine.target)
 
 	writer := bufio.NewWriter(conn)
-	_, err = writer.Write([]byte("HTTP/1.1 " + code + "\r\n\r\n"))
+	_, err = writer.Write(resp)
 	if err != nil {
 		fmt.Println("Error writing to connection: ", err.Error())
 		os.Exit(1)
