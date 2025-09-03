@@ -9,8 +9,11 @@ import (
 	"strings"
 )
 
+type Headers map[string]string
+
 type Request struct {
 	requestLine *RequestLine
+	headers     Headers
 }
 
 type RequestLine struct {
@@ -19,7 +22,11 @@ type RequestLine struct {
 	version string
 }
 
-func getResponse(target string) []byte {
+func getResponse(request *Request) []byte {
+	target := request.requestLine.target
+	if target == "/user-agent" {
+		return get200Response(request.headers["user-agent"])
+	}
 	if target == "/" {
 		return get200Response("")
 	}
@@ -49,11 +56,15 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Request{requestLine: rl}, nil
+	headers, err := parseHeaders(reader)
+	if err != nil {
+		return nil, err
+	}
+	return &Request{requestLine: rl, headers: headers}, nil
 }
 
-func parseRequestLine(r *bufio.Reader) (*RequestLine, error) {
-	requestLineStr, err := getLineToCrlf(r)
+func parseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
+	requestLineStr, err := getLineToCrlf(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +77,24 @@ func parseRequestLine(r *bufio.Reader) (*RequestLine, error) {
 		target:  string(parts[1]),
 		version: string(parts[2]),
 	}, nil
+}
+
+func parseHeaders(reader *bufio.Reader) (Headers, error) {
+	headers := make(Headers)
+	for {
+		line, err := getLineToCrlf(reader)
+		if err != nil {
+			return nil, err
+		}
+		if len(line) == 0 {
+			break
+		}
+		parts := bytes.SplitN(line, []byte(": "), 2)
+		key := strings.ToLower(string(parts[0]))
+		val := string(parts[1])
+		headers[key] = val
+	}
+	return headers, nil
 }
 
 func getTemplate() string {
@@ -103,7 +132,7 @@ func main() {
 		fmt.Println("Error getting request: ", err.Error())
 		os.Exit(1)
 	}
-	resp := getResponse(request.requestLine.target)
+	resp := getResponse(request)
 
 	writer := bufio.NewWriter(conn)
 	_, err = writer.Write(resp)
