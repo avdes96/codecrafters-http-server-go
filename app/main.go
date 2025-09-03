@@ -112,19 +112,7 @@ func get404Response() []byte {
 	return []byte(fmt.Sprintf(getTemplate(), 404, msg, len(msg), msg))
 }
 
-func main() {
-	l, err := net.Listen("tcp", "0.0.0.0:4221")
-	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
-		os.Exit(1)
-	}
-
-	conn, err := l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
-	}
-
+func handleConnection(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	request, err := parseRequest(reader)
 
@@ -144,4 +132,22 @@ func main() {
 		fmt.Println("Error flushing to connection: ", err.Error())
 		os.Exit(1)
 	}
+}
+
+func main() {
+	l, err := net.Listen("tcp", "0.0.0.0:4221")
+	if err != nil {
+		fmt.Println("Failed to bind to port 4221")
+		os.Exit(1)
+	}
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+		go handleConnection(conn)
+	}
+
 }
