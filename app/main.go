@@ -3,13 +3,23 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"flag"
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 type Headers map[string]string
+
+type Server struct {
+	filesDirectory string
+}
+
+func NewServer(filesDirectory string) *Server {
+	return &Server{filesDirectory: filesDirectory}
+}
 
 type Request struct {
 	requestLine *RequestLine
@@ -22,16 +32,31 @@ type RequestLine struct {
 	version string
 }
 
-func getResponse(request *Request) []byte {
+func (s *Server) getResponse(request *Request) []byte {
 	target := request.requestLine.target
 	if target == "/user-agent" {
-		return get200Response(request.headers["user-agent"])
+		return get200Response(request.headers["user-agent"], CONTENT_TEXT_PLAIN)
+	}
+	if strings.HasPrefix(target, "/files/") {
+		if s.filesDirectory == "" {
+			return get404Response()
+		}
+		filename := strings.TrimPrefix(target, "/files/")
+		location := filepath.Join(s.filesDirectory, filename)
+		data, err := os.ReadFile(location)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return get404Response()
+			}
+			return get500Response()
+		}
+		return get200Response(string(data), CONTENT_APP_OCTET_STREAM)
 	}
 	if target == "/" {
-		return get200Response("")
+		return get200Response("", CONTENT_TEXT_PLAIN)
 	}
 	if strings.HasPrefix(target, "/echo/") {
-		return get200Response(strings.TrimPrefix(target, "/echo/"))
+		return get200Response(strings.TrimPrefix(target, "/echo/"), CONTENT_TEXT_PLAIN)
 	}
 	return get404Response()
 }
@@ -99,20 +124,44 @@ func parseHeaders(reader *bufio.Reader) (Headers, error) {
 
 func getTemplate() string {
 	return "HTTP/1.1 %d %s\r\n" +
-		"Content-Type: text/plain\r\n" +
+		"Content-Type: %s\r\n" +
 		"Content-Length: %d\r\n\r\n%s"
 }
 
-func get200Response(body string) []byte {
-	return []byte(fmt.Sprintf(getTemplate(), 200, "OK", len(body), body))
+type CONTENT_TYPE int
+
+const (
+	CONTENT_TEXT_PLAIN CONTENT_TYPE = iota
+	CONTENT_APP_OCTET_STREAM
+)
+
+func (c CONTENT_TYPE) String() string {
+	switch c {
+	case CONTENT_TEXT_PLAIN:
+		return "text/plain"
+	case CONTENT_APP_OCTET_STREAM:
+		return "application/octet-stream"
+	default:
+		return "Unknown"
+	}
+}
+
+func get200Response(body string, contentType CONTENT_TYPE) []byte {
+	return []byte(fmt.Sprintf(getTemplate(), 200, "OK", contentType, len(body), body))
 }
 
 func get404Response() []byte {
 	const msg = "Not Found"
-	return []byte(fmt.Sprintf(getTemplate(), 404, msg, len(msg), msg))
+	return []byte(fmt.Sprintf(getTemplate(), 404, msg, CONTENT_TEXT_PLAIN, len(msg), msg))
 }
 
-func handleConnection(conn net.Conn) {
+func get500Response() []byte {
+	const msg = "Internal Server Error"
+	return []byte(fmt.Sprintf(getTemplate(), 500, msg, CONTENT_TEXT_PLAIN, len(msg), msg))
+
+}
+
+func (s *Server) handleConnection(conn net.Conn) {
 	reader := bufio.NewReader(conn)
 	request, err := parseRequest(reader)
 
@@ -120,7 +169,7 @@ func handleConnection(conn net.Conn) {
 		fmt.Println("Error getting request: ", err.Error())
 		os.Exit(1)
 	}
-	resp := getResponse(request)
+	resp := s.getResponse(request)
 
 	writer := bufio.NewWriter(conn)
 	_, err = writer.Write(resp)
@@ -135,6 +184,10 @@ func handleConnection(conn net.Conn) {
 }
 
 func main() {
+	directory := flag.String("directory", "", "the absolute path of the directory where files are stored")
+	flag.Parse()
+	server := NewServer(*directory)
+
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
@@ -147,7 +200,7 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			os.Exit(1)
 		}
-		go handleConnection(conn)
+		go server.handleConnection(conn)
 	}
 
 }
