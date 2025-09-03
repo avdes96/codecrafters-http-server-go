@@ -19,38 +19,6 @@ type RequestLine struct {
 	version string
 }
 
-func getCrlfScanner(conn *net.Conn) *bufio.Scanner {
-	scanner := bufio.NewScanner(*conn)
-	cap := 64 * 1024
-	buf := make([]byte, cap)
-	scanner.Buffer(buf, cap)
-	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF {
-			if len(data) > 0 {
-				return len(data), data, nil
-			}
-			return 0, nil, nil
-		}
-		if i := bytes.Index(data, []byte("\r\n")); i > 0 {
-			return i + 2, data[:i], nil
-		}
-		return 0, nil, nil
-	})
-	return scanner
-}
-
-func parseRequestLine(s string) (*RequestLine, error) {
-	parts := strings.Split(s, " ")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("expected request line to be 3 parts, got %d", len(parts))
-	}
-	return &RequestLine{
-		method:  parts[0],
-		target:  parts[1],
-		version: parts[2],
-	}, nil
-}
-
 func getResponse(target string) []byte {
 	if target == "/" {
 		return get200Response("")
@@ -61,17 +29,43 @@ func getResponse(target string) []byte {
 	return get404Response()
 }
 
-func parseRequest(s *bufio.Scanner) (*Request, error) {
-	s.Scan()
-	if s.Err() != nil {
-		return nil, s.Err()
+func getLineToCrlf(reader *bufio.Reader) ([]byte, error) {
+	buf := []byte{}
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			return nil, err
+		}
+		buf = append(buf, line...)
+		if len(buf) >= 2 && line[len(buf)-2] == '\r' {
+			return buf[:len(buf)-2], nil
+		}
+
 	}
-	requestLineStr := s.Text()
-	rl, err := parseRequestLine(requestLineStr)
+}
+
+func parseRequest(reader *bufio.Reader) (*Request, error) {
+	rl, err := parseRequestLine(reader)
 	if err != nil {
 		return nil, err
 	}
 	return &Request{requestLine: rl}, nil
+}
+
+func parseRequestLine(r *bufio.Reader) (*RequestLine, error) {
+	requestLineStr, err := getLineToCrlf(r)
+	if err != nil {
+		return nil, err
+	}
+	parts := bytes.Split(requestLineStr, []byte{' '})
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("expected request line to be 3 parts, got %d", len(parts))
+	}
+	return &RequestLine{
+		method:  string(parts[0]),
+		target:  string(parts[1]),
+		version: string(parts[2]),
+	}, nil
 }
 
 func getTemplate() string {
@@ -102,8 +96,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	scanner := getCrlfScanner(&conn)
-	request, err := parseRequest(scanner)
+	reader := bufio.NewReader(conn)
+	request, err := parseRequest(reader)
 
 	if err != nil {
 		fmt.Println("Error getting request: ", err.Error())
