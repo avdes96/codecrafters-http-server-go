@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +25,7 @@ func NewServer(filesDirectory string) *Server {
 type Request struct {
 	requestLine *RequestLine
 	headers     Headers
+	body        []byte
 }
 
 type RequestLine struct {
@@ -38,19 +40,7 @@ func (s *Server) getResponse(request *Request) []byte {
 		return get200Response(request.headers["user-agent"], CONTENT_TEXT_PLAIN)
 	}
 	if strings.HasPrefix(target, "/files/") {
-		if s.filesDirectory == "" {
-			return get404Response()
-		}
-		filename := strings.TrimPrefix(target, "/files/")
-		location := filepath.Join(s.filesDirectory, filename)
-		data, err := os.ReadFile(location)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return get404Response()
-			}
-			return get500Response()
-		}
-		return get200Response(string(data), CONTENT_APP_OCTET_STREAM)
+		return s.filesEndpoint(request)
 	}
 	if target == "/" {
 		return get200Response("", CONTENT_TEXT_PLAIN)
@@ -59,6 +49,34 @@ func (s *Server) getResponse(request *Request) []byte {
 		return get200Response(strings.TrimPrefix(target, "/echo/"), CONTENT_TEXT_PLAIN)
 	}
 	return get404Response()
+}
+
+func (s *Server) filesEndpoint(request *Request) []byte {
+	if s.filesDirectory == "" {
+		return get404Response()
+	}
+	filename := strings.TrimPrefix(request.requestLine.target, "/files/")
+	location := filepath.Join(s.filesDirectory, filename)
+	switch strings.ToLower(request.requestLine.method) {
+	case "get":
+		data, err := os.ReadFile(location)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return get404Response()
+			}
+			return get500Response()
+		}
+		return get200Response(string(data), CONTENT_APP_OCTET_STREAM)
+	case "post":
+		err := os.WriteFile(location, request.body, 0644)
+		if err != nil {
+			return get500Response()
+		}
+		return get201Response()
+	default:
+		return get501Response()
+	}
+
 }
 
 func getLineToCrlf(reader *bufio.Reader) ([]byte, error) {
@@ -85,7 +103,16 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Request{requestLine: rl, headers: headers}, nil
+	body := []byte{}
+	if bodyLenStr, ok := headers[strings.ToLower("Content-Length")]; ok {
+		if bodyLen, err := strconv.Atoi(bodyLenStr); err == nil && bodyLen > 0 {
+			body, err = parseBody(reader, bodyLen)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return &Request{requestLine: rl, headers: headers, body: body}, nil
 }
 
 func parseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
@@ -122,6 +149,15 @@ func parseHeaders(reader *bufio.Reader) (Headers, error) {
 	return headers, nil
 }
 
+func parseBody(reader *bufio.Reader, len int) ([]byte, error) {
+	body := make([]byte, len)
+	_, err := reader.Read(body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
 func getTemplate() string {
 	return "HTTP/1.1 %d %s\r\n" +
 		"Content-Type: %s\r\n" +
@@ -150,6 +186,11 @@ func get200Response(body string, contentType CONTENT_TYPE) []byte {
 	return []byte(fmt.Sprintf(getTemplate(), 200, "OK", contentType, len(body), body))
 }
 
+func get201Response() []byte {
+	const msg = "Created"
+	return []byte(fmt.Sprintf(getTemplate(), 201, msg, CONTENT_TEXT_PLAIN, len(msg), msg))
+}
+
 func get404Response() []byte {
 	const msg = "Not Found"
 	return []byte(fmt.Sprintf(getTemplate(), 404, msg, CONTENT_TEXT_PLAIN, len(msg), msg))
@@ -158,6 +199,12 @@ func get404Response() []byte {
 func get500Response() []byte {
 	const msg = "Internal Server Error"
 	return []byte(fmt.Sprintf(getTemplate(), 500, msg, CONTENT_TEXT_PLAIN, len(msg), msg))
+
+}
+
+func get501Response() []byte {
+	const msg = "Not Implemented"
+	return []byte(fmt.Sprintf(getTemplate(), 501, msg, CONTENT_TEXT_PLAIN, len(msg), msg))
 
 }
 
