@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/codecrafters-io/http-server-starter-go/app/utils"
 )
 
 type Headers map[string]string
@@ -79,21 +81,6 @@ func (s *Server) filesEndpoint(request *Request) []byte {
 
 }
 
-func getLineToCrlf(reader *bufio.Reader) ([]byte, error) {
-	buf := []byte{}
-	for {
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			return nil, err
-		}
-		buf = append(buf, line...)
-		if len(buf) >= 2 && line[len(buf)-2] == '\r' {
-			return buf[:len(buf)-2], nil
-		}
-
-	}
-}
-
 func parseRequest(reader *bufio.Reader) (*Request, error) {
 	rl, err := parseRequestLine(reader)
 	if err != nil {
@@ -116,7 +103,7 @@ func parseRequest(reader *bufio.Reader) (*Request, error) {
 }
 
 func parseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
-	requestLineStr, err := getLineToCrlf(reader)
+	requestLineStr, err := utils.GetLineToCrlf(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +121,7 @@ func parseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
 func parseHeaders(reader *bufio.Reader) (Headers, error) {
 	headers := make(Headers)
 	for {
-		line, err := getLineToCrlf(reader)
+		line, err := utils.GetLineToCrlf(reader)
 		if err != nil {
 			return nil, err
 		}
