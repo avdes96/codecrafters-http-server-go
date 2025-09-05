@@ -62,23 +62,27 @@ func (s *Server) handleConnection(conn net.Conn) {
 func (s *Server) getResponse(request *request.Request) []byte {
 	target := request.Target()
 	if target == "/user-agent" {
-		return response.Get200Response(request.HeaderValue("user-agent"), response.CONTENT_TEXT_PLAIN)
+		body := request.HeaderValue("user-agent")
+		return response.New200Response(response.WithBody(body),
+			response.WithContentType(response.CONTENT_TEXT_PLAIN)).Serialise()
 	}
 	if strings.HasPrefix(target, "/files/") {
 		return s.filesEndpoint(request)
 	}
 	if target == "/" {
-		return response.Get200Response("", response.CONTENT_TEXT_PLAIN)
+		return response.New200Response(response.WithContentType(response.CONTENT_TEXT_PLAIN)).Serialise()
 	}
 	if strings.HasPrefix(target, "/echo/") {
-		return response.Get200Response(strings.TrimPrefix(target, "/echo/"), response.CONTENT_TEXT_PLAIN)
+		body := strings.TrimPrefix(target, "/echo/")
+		return response.New200Response(response.WithBody(body),
+			response.WithContentType(response.CONTENT_TEXT_PLAIN)).Serialise()
 	}
-	return response.Get404Response()
+	return response.New404Response().Serialise()
 }
 
 func (s *Server) filesEndpoint(request *request.Request) []byte {
 	if s.filesDirectory == "" {
-		return response.Get404Response()
+		return response.New404Response().Serialise()
 	}
 	filename := strings.TrimPrefix(request.Target(), "/files/")
 	location := filepath.Join(s.filesDirectory, filename)
@@ -87,18 +91,20 @@ func (s *Server) filesEndpoint(request *request.Request) []byte {
 		data, err := os.ReadFile(location)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return response.Get404Response()
+				return response.New404Response().Serialise()
 			}
-			return response.Get500Response()
+			return response.New500Response().Serialise()
 		}
-		return response.Get200Response(string(data), response.CONTENT_APP_OCTET_STREAM)
+		body := string(data)
+		return response.New200Response(response.WithBody(body),
+			response.WithContentType(response.CONTENT_APP_OCTET_STREAM)).Serialise()
 	case "post":
 		err := os.WriteFile(location, request.Body(), 0644)
 		if err != nil {
-			return response.Get500Response()
+			return response.New500Response().Serialise()
 		}
-		return response.Get201Response()
+		return response.New201Response().Serialise()
 	default:
-		return response.Get501Response()
+		return response.New501Response().Serialise()
 	}
 }

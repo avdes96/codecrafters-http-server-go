@@ -2,6 +2,8 @@ package utils
 
 import "bufio"
 
+type Headers map[string]string
+
 func GetLineToCrlf(reader *bufio.Reader) ([]byte, error) {
 	buf := []byte{}
 	for {

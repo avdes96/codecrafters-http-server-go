@@ -12,11 +12,9 @@ import (
 
 type Request struct {
 	requestLine *RequestLine
-	headers     Headers
+	headers     utils.Headers
 	body        []byte
 }
-
-type Headers map[string]string
 
 type RequestLine struct {
 	method  string
@@ -61,8 +59,8 @@ func ParseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
 	}, nil
 }
 
-func ParseHeaders(reader *bufio.Reader) (Headers, error) {
-	headers := make(Headers)
+func ParseHeaders(reader *bufio.Reader) (utils.Headers, error) {
+	headers := make(utils.Headers)
 	for {
 		line, err := utils.GetLineToCrlf(reader)
 		if err != nil {
