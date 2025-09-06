@@ -104,3 +104,11 @@ func (r *Request) HeaderValue(key string) string {
 	}
 	return ""
 }
+
+func (r *Request) Encodings() []string {
+	encodingStr := r.HeaderValue("accept-encoding")
+	if encodingStr == "" {
+		return nil
+	}
+	return strings.Split(encodingStr, ", ")
+}

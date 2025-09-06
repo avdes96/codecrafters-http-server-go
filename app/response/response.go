@@ -86,6 +86,15 @@ func WithBody(b string) Option {
 	}
 }
 
+func WithEncodings(e string) Option {
+	return func(r *Response) {
+		if e == "" {
+			return
+		}
+		r.headers["Content-Encoding"] = e
+	}
+}
+
 func New200Response(opts ...Option) *Response {
 	r := &Response{
 		version:    DEFAULT_VERSION,
