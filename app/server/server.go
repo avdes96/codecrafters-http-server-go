@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -44,24 +45,29 @@ func (s *Server) Run() {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
-	reader := bufio.NewReader(conn)
-	request, err := request.ParseRequest(reader)
+	for {
+		reader := bufio.NewReader(conn)
+		request, err := request.ParseRequest(reader)
 
-	if err != nil {
-		fmt.Println("Error getting request: ", err.Error())
-		os.Exit(1)
-	}
-	resp := s.getResponse(request)
+		if err != nil {
+			if err == io.EOF {
+				continue
+			}
+			fmt.Println("Error getting request: ", err.Error())
+			os.Exit(1)
+		}
+		resp := s.getResponse(request)
 
-	writer := bufio.NewWriter(conn)
-	_, err = writer.Write(resp)
-	if err != nil {
-		fmt.Println("Error writing to connection: ", err.Error())
-		os.Exit(1)
-	}
-	if err := writer.Flush(); err != nil {
-		fmt.Println("Error flushing to connection: ", err.Error())
-		os.Exit(1)
+		writer := bufio.NewWriter(conn)
+		_, err = writer.Write(resp)
+		if err != nil {
+			fmt.Println("Error writing to connection: ", err.Error())
+			os.Exit(1)
+		}
+		if err := writer.Flush(); err != nil {
+			fmt.Println("Error flushing to connection: ", err.Error())
+			os.Exit(1)
+		}
 	}
 }
 
