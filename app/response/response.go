@@ -15,13 +15,33 @@ type Response struct {
 }
 
 func (r *Response) Serialise() []byte {
-	s := fmt.Sprintf("HTTP/%s %d %s\r\n", r.version, r.statusCode, r.statusCode)
+	body := r.getBodyAsBytes()
+	serialised := []byte(fmt.Sprintf("HTTP/%s %d %s\r\n", r.version, r.statusCode, r.statusCode))
 	for k, v := range r.headers {
-		s += fmt.Sprintf("%s: %s\r\n", k, v)
+		serialised = append(serialised, []byte(fmt.Sprintf("%s: %s\r\n", k, v))...)
 	}
-	s += "\r\n"
-	s += r.body
-	return []byte(s)
+	serialised = append(serialised, []byte("\r\n")...)
+	serialised = append(serialised, body...)
+	return serialised
+
+}
+
+func (r *Response) getBodyAsBytes() []byte {
+	bodyBytes := []byte{}
+	doneEncoding := false
+	if scheme, ok := r.headers["Content-Encoding"]; ok {
+		if compressedBytes, err := utils.CompressData(scheme, []byte(r.body)); err == nil {
+			bodyBytes = compressedBytes
+			doneEncoding = true
+		}
+	}
+	if !doneEncoding {
+		bodyBytes = []byte(r.body)
+	}
+	if len(bodyBytes) > 0 {
+		r.headers["Content-Length"] = strconv.Itoa(len(bodyBytes))
+	}
+	return bodyBytes
 }
 
 type RESPONSE_CODE int
@@ -81,7 +101,6 @@ func WithContentType(c CONTENT_TYPE) Option {
 
 func WithBody(b string) Option {
 	return func(r *Response) {
-		r.headers["Content-Length"] = strconv.Itoa(len(b))
 		r.body = b
 	}
 }
