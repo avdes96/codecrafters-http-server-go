@@ -6,8 +6,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/codecrafters-io/http-server-starter-go/app/request"
 	"github.com/codecrafters-io/http-server-starter-go/app/response"
@@ -17,6 +15,7 @@ import (
 type Server struct {
 	filesDirectory string
 	validEncodings mapset.Set[string]
+	endpoints      endpointRegistry
 }
 
 func NewServer(filesDirectory string) *Server {
@@ -24,6 +23,7 @@ func NewServer(filesDirectory string) *Server {
 	return &Server{
 		filesDirectory: filesDirectory,
 		validEncodings: validEncodings,
+		endpoints:      NewEndpointRegistry(),
 	}
 }
 
@@ -59,7 +59,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		resp := s.getResponse(request)
 
 		writer := bufio.NewWriter(conn)
-		_, err = writer.Write(resp)
+		_, err = writer.Write(resp.Serialise())
 		if err != nil {
 			fmt.Println("Error writing to connection: ", err.Error())
 			os.Exit(1)
@@ -71,63 +71,21 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
-func (s *Server) getResponse(request *request.Request) []byte {
-	target := request.Target()
-	if strings.HasPrefix(target, "/files/") {
-		return s.filesEndpoint(request)
-	}
+func (s *Server) getResponse(request *request.Request) *response.Response {
 	opts := []response.Option{}
 	opts = s.addEncodingOption(request, opts)
-	if target == "/user-agent" {
-		body := request.HeaderValue("user-agent")
-		opts = append(opts, response.WithBody(body))
-		opts = append(opts, response.WithContentType(response.CONTENT_TEXT_PLAIN))
-		return response.New200Response(opts...).Serialise()
+	availableMethods, ok := s.endpoints[request.Endpoint()]
+	if !ok {
+		opts = append(opts, response.WithStatusCode(response.CODE_404))
+		return response.NewResponse(opts...)
 	}
-
-	if target == "/" {
-		opts = append(opts, response.WithContentType(response.CONTENT_TEXT_PLAIN))
-		return response.New200Response(opts...).Serialise()
+	rh, ok := availableMethods[request.Method()]
+	if !ok {
+		opts = append(opts, response.WithStatusCode(response.CODE_501))
+		return response.NewResponse(opts...)
 	}
-	if strings.HasPrefix(target, "/echo/") {
-		body := strings.TrimPrefix(target, "/echo/")
-		opts = append(opts, response.WithBody(body))
-		opts = append(opts, response.WithContentType(response.CONTENT_TEXT_PLAIN))
-		return response.New200Response(opts...).Serialise()
-	}
-	return response.New404Response().Serialise()
-}
-
-func (s *Server) filesEndpoint(request *request.Request) []byte {
-	opts := []response.Option{}
-	opts = s.addEncodingOption(request, opts)
-	if s.filesDirectory == "" {
-		return response.New404Response().Serialise()
-	}
-	filename := strings.TrimPrefix(request.Target(), "/files/")
-	location := filepath.Join(s.filesDirectory, filename)
-	switch strings.ToLower(request.Method()) {
-	case "get":
-		data, err := os.ReadFile(location)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return response.New404Response().Serialise()
-			}
-			return response.New500Response().Serialise()
-		}
-		body := string(data)
-		opts = append(opts, response.WithBody(body))
-		opts = append(opts, response.WithContentType(response.CONTENT_APP_OCTET_STREAM))
-		return response.New200Response(opts...).Serialise()
-	case "post":
-		err := os.WriteFile(location, request.Body(), 0644)
-		if err != nil {
-			return response.New500Response().Serialise()
-		}
-		return response.New201Response().Serialise()
-	default:
-		return response.New501Response().Serialise()
-	}
+	opts = rh(request, opts, s)
+	return response.NewResponse(opts...)
 }
 
 func (s *Server) addEncodingOption(r *request.Request, opts []response.Option) []response.Option {

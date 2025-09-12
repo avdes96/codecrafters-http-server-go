@@ -53,7 +53,7 @@ func ParseRequestLine(reader *bufio.Reader) (*RequestLine, error) {
 		return nil, fmt.Errorf("expected request line to be 3 parts, got %d", len(parts))
 	}
 	return &RequestLine{
-		method:  string(parts[0]),
+		method:  strings.ToLower(string(parts[0])),
 		target:  string(parts[1]),
 		version: string(parts[2]),
 	}, nil
@@ -111,4 +111,15 @@ func (r *Request) Encodings() []string {
 		return nil
 	}
 	return strings.Split(encodingStr, ", ")
+}
+
+func (r *Request) Endpoint() string {
+	idx := 0
+	for idx < len(r.Target()) {
+		if r.Target()[idx] == '/' && idx > 0 {
+			break
+		}
+		idx++
+	}
+	return r.Target()[:idx]
 }

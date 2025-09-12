@@ -9,7 +9,7 @@ import (
 
 type Response struct {
 	version    string
-	statusCode RESPONSE_CODE
+	statusCode STATUS_CODE
 	headers    utils.Headers
 	body       string
 }
@@ -44,7 +44,7 @@ func (r *Response) getBodyAsBytes() []byte {
 	return bodyBytes
 }
 
-type RESPONSE_CODE int
+type STATUS_CODE int
 
 const (
 	CODE_200 = 200
@@ -54,7 +54,7 @@ const (
 	CODE_501 = 501
 )
 
-func (c RESPONSE_CODE) String() string {
+func (c STATUS_CODE) String() string {
 	switch c {
 	case CODE_200:
 		return "OK"
@@ -93,6 +93,12 @@ func (c CONTENT_TYPE) String() string {
 
 type Option func(*Response)
 
+func WithStatusCode(s STATUS_CODE) Option {
+	return func(r *Response) {
+		r.statusCode = s
+	}
+}
+
 func WithContentType(c CONTENT_TYPE) Option {
 	return func(r *Response) {
 		r.headers["Content-Type"] = c.String()
@@ -114,10 +120,10 @@ func WithEncodings(e string) Option {
 	}
 }
 
-func New200Response(opts ...Option) *Response {
+func NewResponse(opts ...Option) *Response {
 	r := &Response{
 		version:    DEFAULT_VERSION,
-		statusCode: CODE_200,
+		statusCode: CODE_500,
 		headers:    make(utils.Headers),
 	}
 
@@ -125,36 +131,4 @@ func New200Response(opts ...Option) *Response {
 		opt(r)
 	}
 	return r
-}
-
-func New201Response() *Response {
-	return &Response{
-		version:    DEFAULT_VERSION,
-		statusCode: CODE_201,
-		headers:    make(utils.Headers),
-	}
-}
-
-func New404Response() *Response {
-	return &Response{
-		version:    DEFAULT_VERSION,
-		statusCode: CODE_404,
-		headers:    make(utils.Headers),
-	}
-}
-
-func New500Response() *Response {
-	return &Response{
-		version:    DEFAULT_VERSION,
-		statusCode: CODE_500,
-		headers:    make(utils.Headers),
-	}
-}
-
-func New501Response() *Response {
-	return &Response{
-		version:    DEFAULT_VERSION,
-		statusCode: CODE_501,
-		headers:    make(utils.Headers),
-	}
 }
