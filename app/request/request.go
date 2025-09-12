@@ -98,16 +98,16 @@ func (r *Request) Body() []byte {
 	return r.body
 }
 
-func (r *Request) HeaderValue(key string) string {
-	if value, ok := r.headers[key]; ok {
-		return value
+func (r *Request) HeaderValue(key string) (string, bool) {
+	if value, ok := r.headers[strings.ToLower(key)]; ok {
+		return value, true
 	}
-	return ""
+	return "", false
 }
 
 func (r *Request) Encodings() []string {
-	encodingStr := r.HeaderValue("accept-encoding")
-	if encodingStr == "" {
+	encodingStr, ok := r.HeaderValue("accept-encoding")
+	if !ok {
 		return nil
 	}
 	return strings.Split(encodingStr, ", ")

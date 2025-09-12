@@ -49,6 +49,7 @@ type STATUS_CODE int
 const (
 	CODE_200 = 200
 	CODE_201 = 201
+	CODE_400 = 400
 	CODE_404 = 404
 	CODE_500 = 500
 	CODE_501 = 501
@@ -60,6 +61,8 @@ func (c STATUS_CODE) String() string {
 		return "OK"
 	case CODE_201:
 		return "Created"
+	case CODE_400:
+		return "Bad Request"
 	case CODE_404:
 		return "Not Found"
 	case CODE_500:
@@ -120,6 +123,12 @@ func WithEncodings(e string) Option {
 	}
 }
 
+func WithHeader(k string, v string) Option {
+	return func(r *Response) {
+		r.headers[k] = v
+	}
+}
+
 func NewResponse(opts ...Option) *Response {
 	r := &Response{
 		version:    DEFAULT_VERSION,
@@ -131,4 +140,11 @@ func NewResponse(opts ...Option) *Response {
 		opt(r)
 	}
 	return r
+}
+
+func (r *Response) HeaderValue(key string) (string, bool) {
+	if value, ok := r.headers[key]; ok {
+		return value, true
+	}
+	return "", false
 }

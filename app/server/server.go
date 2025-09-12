@@ -45,6 +45,7 @@ func (s *Server) Run() {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
+	defer conn.Close()
 	for {
 		reader := bufio.NewReader(conn)
 		request, err := request.ParseRequest(reader)
@@ -68,12 +69,18 @@ func (s *Server) handleConnection(conn net.Conn) {
 			fmt.Println("Error flushing to connection: ", err.Error())
 			os.Exit(1)
 		}
+		if val, ok := resp.HeaderValue("Connection"); ok && val == "close" {
+			return
+		}
 	}
 }
 
 func (s *Server) getResponse(request *request.Request) *response.Response {
 	opts := []response.Option{}
 	opts = s.addEncodingOption(request, opts)
+	if val, ok := request.HeaderValue("connection"); ok {
+		opts = append(opts, response.WithHeader("Connection", val))
+	}
 	availableMethods, ok := s.endpoints[request.Endpoint()]
 	if !ok {
 		opts = append(opts, response.WithStatusCode(response.CODE_404))

@@ -65,8 +65,13 @@ func NewEndpointRegistry() endpointRegistry {
 		return opts
 	})
 	e.register("/user-agent", "get", func(request *request.Request, opts []response.Option, server *Server) []response.Option {
+		body, ok := request.HeaderValue("user-agent")
+		if !ok {
+			opts = append(opts, response.WithStatusCode(response.CODE_400))
+			return opts
+		}
 		opts = append(opts, response.WithStatusCode(response.CODE_200))
-		opts = append(opts, response.WithBody(request.HeaderValue("user-agent")))
+		opts = append(opts, response.WithBody(body))
 		opts = append(opts, response.WithContentType(response.CONTENT_TEXT_PLAIN))
 		return opts
 	})
